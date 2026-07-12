@@ -1,6 +1,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const { PostHog } = require('posthog-node');
 
 const root = fs.existsSync(path.join(__dirname, 'dist')) ? path.join(__dirname, 'dist') : __dirname;
 const envFile = path.join(root, '.env');
@@ -11,6 +12,7 @@ if (fs.existsSync(envFile)) {
   }
 }
 const port = Number(process.env.PORT || 3000);
+const phog = new PostHog(process.env.VITE_PUBLIC_POSTHOG_KEY || '', { host: process.env.VITE_PUBLIC_POSTHOG_HOST || 'https://us.i.posthog.com' });
 const mimeTypes = { '.html':'text/html; charset=utf-8', '.js':'text/javascript; charset=utf-8', '.css':'text/css; charset=utf-8', '.png':'image/png', '.jpg':'image/jpeg', '.jpeg':'image/jpeg', '.svg':'image/svg+xml' };
 
 function sendJson(res, status, data) { res.writeHead(status, {'Content-Type':'application/json; charset=utf-8'}); res.end(JSON.stringify(data)); }
@@ -33,6 +35,8 @@ async function handleAgent(req, res) {
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error?.message || 'The model request failed.');
+    const distinctId = req.headers['x-posthog-distinct-id'] || 'anonymous';
+    phog.capture({ distinctId, event: 'ai_agent_queried', properties: { region, $session_id: req.headers['x-posthog-session-id'] } });
     sendJson(res, 200, {reply:data.output_text || 'I could not generate a response. Please try again.'});
   } catch (error) { sendJson(res, 502, {error:error.message || 'Unable to reach the AI service.'}); }
 }
